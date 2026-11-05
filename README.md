@@ -55,16 +55,24 @@ These bands are used to calculate indices using the HTML5 Canvas API:
 
 ## Running Locally
 
+Requires Node.js 22 (see `.nvmrc`).
+
 1.  Clone the repository.
 2.  Install dependencies:
     ```bash
-    npm install
+    npm ci
     ```
 3.  Start the development server:
     ```bash
-    npm start
+    npm run dev
     ```
 4.  Open `http://localhost:3000` in your browser.
+
+Other scripts: `npm run typecheck` (TypeScript check) and `npm run build` (production build into `dist/`).
+
+## Deployment
+
+The site is deployed to GitHub Pages by GitHub Actions (`.github/workflows/deploy.yml`). Every push to `main` type-checks and builds the app, then publishes `dist/` to Pages. You can also run the workflow manually from the **Actions** tab.
 
 ## License
 
