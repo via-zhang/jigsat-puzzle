@@ -206,12 +206,27 @@ const App: React.FC = () => {
     }
   }, [mode, selectedLocation, calYear, calMonth]);
 
+  // Which mosaic/mode the current image was rendered from, to avoid rendering twice.
+  const renderedForRef = useRef<{ data: MosaicData; mode: VisMode } | null>(null);
+
   useEffect(() => {
-    if (mosaicData) {
-       const url = renderLayer(mosaicData, visMode);
-       setCurrentImage(url);
-    }
+    if (!mosaicData) return;
+    const rendered = renderedForRef.current;
+    if (rendered && rendered.data === mosaicData && rendered.mode === visMode) return;
+    let cancelled = false;
+    renderLayer(mosaicData, visMode).then((url) => {
+      if (cancelled) { URL.revokeObjectURL(url); return; }
+      renderedForRef.current = { data: mosaicData, mode: visMode };
+      setCurrentImage(url);
+    }).catch((e) => console.error('Failed to render layer', e));
+    return () => { cancelled = true; };
   }, [visMode, mosaicData]);
+
+  // Release the previous image's blob URL once it is no longer displayed.
+  useEffect(() => {
+    if (!currentImage?.startsWith('blob:')) return;
+    return () => URL.revokeObjectURL(currentImage);
+  }, [currentImage]);
 
   const fetchAvailability = async () => {
      if (!selectedLocation) return;
@@ -282,9 +297,10 @@ const App: React.FC = () => {
   const loadPuzzle = async (bbox: number[], date: string) => {
     try {
         const data = await generateMosaic(bbox, date, visMode);
+        const url = await renderLayer(data, visMode);
+        renderedForRef.current = { data, mode: visMode };
         setMosaicData(data);
         setCurrentTimeRange(data.dateString);
-        const url = renderLayer(data, visMode);
         setCurrentImage(url);
     } catch (e: any) {
         throw new Error(e.message || "Failed to generate mosaic");
@@ -334,7 +350,7 @@ const App: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 font-sans transition-colors duration-200">
-      <header className="bg-slate-900 dark:bg-black text-white p-4 shadow-md sticky top-0 z-50">
+      <header className="bg-slate-900 dark:bg-black text-white p-4 shadow-md md:sticky md:top-0 z-50">
         <div className="max-w-6xl mx-auto flex flex-col md:flex-row justify-between items-center gap-4">
           <div className="flex items-center gap-2">
             <Globe className="w-8 h-8 text-blue-400" />
@@ -510,6 +526,7 @@ const App: React.FC = () => {
                       ) : (
                         <>
                           <li>Drag &amp; drop tiles from the tray to the grid.</li>
+                          <li>Or tap a tile, then tap a slot to place it.</li>
                           <li>Arrange them to form the full image.</li>
                           <li>You can swap tiles between slots.</li>
                         </>

@@ -272,7 +272,20 @@ export const generateMosaic = async (
 const CLOUD_RGB = hexToRgb(CLOUD_MASK_COLOR);
 const WATER_RGB = hexToRgb(WATER_MASK_COLOR);
 
-export const renderLayer = (data: MosaicData, mode: VisMode): string => {
+/** Encodes a canvas as a JPEG blob URL. Blob URLs are short strings, so the puzzle
+ *  can reference the same image from every piece without copying ~0.5 MB of
+ *  base64 text into each one (which used to strain memory on iPhones). The caller
+ *  must release the URL with URL.revokeObjectURL when it is no longer shown. */
+const canvasToObjectUrl = (canvas: HTMLCanvasElement): Promise<string> =>
+    new Promise((resolve, reject) => {
+        canvas.toBlob(
+            (blob) => (blob ? resolve(URL.createObjectURL(blob)) : reject(new Error('Failed to encode image'))),
+            'image/jpeg',
+            0.9
+        );
+    });
+
+export const renderLayer = async (data: MosaicData, mode: VisMode): Promise<string> => {
     const { visualCanvas, indexCanvas, sclCanvas } = data;
     const width = visualCanvas.width;
     const height = visualCanvas.height;
@@ -284,7 +297,7 @@ export const renderLayer = (data: MosaicData, mode: VisMode): string => {
 
     if (mode === 'VISUAL') {
         ctx.drawImage(visualCanvas, 0, 0);
-        return outCanvas.toDataURL('image/jpeg', 0.9);
+        return canvasToObjectUrl(outCanvas);
     }
 
     const config = VISUALIZATION_MODES[mode];
@@ -323,7 +336,7 @@ export const renderLayer = (data: MosaicData, mode: VisMode): string => {
     }
 
     ctx.putImageData(output, 0, 0);
-    return outCanvas.toDataURL('image/jpeg', 0.9);
+    return canvasToObjectUrl(outCanvas);
 };
 
 export const findRandomGoodDate = async (bbox: number[]): Promise<string | null> => {

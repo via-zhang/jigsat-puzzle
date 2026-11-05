@@ -9,7 +9,7 @@ jigSAT Puzzle is an interactive, educational web game where you piece together s
     *   **Choose Location:** Click anywhere on the global map and choose a specific date to generate a puzzle for that exact location.
 2.  **The Game Type:**
     *   **Rotate:** On a grid of randomly-rotated tiles (2x2, 3x3, or 4x4), click to rotate each tile until the image aligns.
-    *   **Jigsaw:** Drag and drop tiles from a tray onto the grid. In 4x4 mode, tiles have jigsaw shapes, and in the other modes, the tiles are square.
+    *   **Jigsaw:** Drag and drop tiles from a tray onto the grid. In 4x4 and 5x5 mode, tiles have jigsaw shapes; in the other modes, the tiles are square. On phones and tablets you can also tap a tile and then tap a slot to place it.
 3.  **Analysis Tools:**
     *   While solving (or after winning), toggle between different spectral views (True Color, Vegetation, Water, Urban) to see the landscape through different "lenses."
 
