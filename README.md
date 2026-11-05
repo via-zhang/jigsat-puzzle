@@ -26,24 +26,27 @@ We use data from the **Sentinel-2 Level-2A** collection.
 ### 2. How Images are Selected
 To ensure a playable puzzle, the app performs rigorous filtering:
 1.  **Cloud Filtering:** Queries the STAC API for images with <35% cloud cover (for Random mode) or <50% (for Choose mode).
-2.  **Mosaicking:** Sentinel-2 images are captured in long "strips." The app fetches multiple overlapping images from the same day and stitches them together on an HTML Canvas to ensure there are no gaps. 
+2.  **Cropping:** Every image is requested with the Planetary Computer `item/bbox` endpoint, so it is cropped to the same ~50 km square around the chosen location.
+3.  **Mosaicking:** Sentinel-2 images are captured in long "strips" and tiles. The app fetches every image from the same day that overlaps the area and layers them on an HTML Canvas (clearest on top) to fill any gaps.
 
-### 3. Client-Side Spectral Analysis
-When you load a location, the following spectral bands are processed:
-*   **B04 (Red)**
-*   **B03 (Green)**
-*   **B02 (Blue)**
-*   **B08 (Near-Infrared / NIR)**
-*   **B11 (Short-wave Infrared / SWIR)**
+### 3. Spectral Indices
+Each index is a normalized difference of two Sentinel-2 bands:
 
-These bands are used to calculate indices using the HTML5 Canvas API:
+*   **B03 (Green)**, **B04 (Red)**, **B08 (Near-Infrared / NIR)**, **B11 (Short-wave Infrared / SWIR)**
 
 | Mode | Name | Formula | Description |
 |------|------|---------|-------------|
 | **VISUAL** | True Color | RGB | Standard red, green, and blue imagery that represents how we would naturally see it. |
 | **NDVI** | Normalized Difference Vegetation Index | `(NIR - Red) / (NIR + Red)` | Highlights live green vegetation. |
-| **NDWI** | Normalized Difference Water Index | `(Green - NIR) / (Green + NIR)` | Highlights water content. |
-| **NDBI** | Normalized Difference Built-up Index | `(SWIR - NIR) / (SWIR + NIR)` | Highlights built-up areas like roads and buildings. |
+| **NDWI** | Normalized Difference Water Index | `(Green - NIR) / (Green + NIR)` | Highlights open water. |
+| **NDBI** | Normalized Difference Built-up Index | `(SWIR - NIR) / (SWIR + NIR)` | Highlights built-up areas (and bare rock/soil). |
+
+How they are calculated (`services/spectralIndices.ts`):
+
+*   **Reflectance offset:** Sentinel-2 products from processing baseline 04.00 (January 2022) onwards store `reflectance × 10000 + 1000`. The 1000 offset is removed before computing each index; very dark pixels are floored at a tiny positive reflectance so the formula never divides by zero.
+*   **Server-side calculation:** the three indices are computed by the Planetary Computer data API (TiTiler expressions) on the original 16-bit values and returned together in one lossless PNG (R = NDVI, G = NDWI, B = NDBI, each scaled from −1…1 to 0…255).
+*   **Coloring:** the browser converts each value back to −1…1 and colors it with the mode's color ramp; values beyond the ends of the ramp are clamped. The on-screen legend uses exactly the same color stops.
+*   **Masks:** the Scene Classification Layer (SCL) is used to show clouds, cloud shadows and cirrus in gray, and (for NDVI and NDBI, where the index is not meaningful over water) water in flat blue.
 
 ## Technologies Used
 
@@ -68,11 +71,11 @@ Requires Node.js 22 (see `.nvmrc`).
     ```
 4.  Open `http://localhost:3000` in your browser.
 
-Other scripts: `npm run typecheck` (TypeScript check) and `npm run build` (production build into `dist/`).
+Other scripts: `npm run typecheck` (TypeScript check), `npm test` (unit tests) and `npm run build` (production build into `dist/`).
 
 ## Deployment
 
-The site is deployed to GitHub Pages by GitHub Actions (`.github/workflows/deploy.yml`). Every push to `main` type-checks and builds the app, then publishes `dist/` to Pages. You can also run the workflow manually from the **Actions** tab.
+The site is deployed to GitHub Pages by GitHub Actions (`.github/workflows/deploy.yml`). Every push to `main` type-checks, tests and builds the app, then publishes `dist/` to Pages. You can also run the workflow manually from the **Actions** tab.
 
 ## License
 

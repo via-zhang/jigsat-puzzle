@@ -21,6 +21,7 @@ export interface SentinelItem {
   properties: {
     datetime: string;
     "eo:cloud_cover": number;
+    "s2:processing_baseline"?: string;
   };
   assets: {
     visual: {
@@ -31,9 +32,9 @@ export interface SentinelItem {
 
 export interface MosaicData {
   // We hold the raw canvases to generate different views on the fly
-  visualCanvas: HTMLCanvasElement; // Optimized RGB (assets=visual)
-  bandsCanvas: HTMLCanvasElement; // R=B04, G=B03, B=B08
-  swirCanvas: HTMLCanvasElement; // R=B11
+  visualCanvas: HTMLCanvasElement; // True colour (assets=visual)
+  indexCanvas: HTMLCanvasElement; // R=NDVI, G=NDWI, B=NDBI, each rescaled from [-1, 1] to [0, 255]; A=valid data
+  sclCanvas: HTMLCanvasElement; // Sentinel-2 Scene Classification Layer (class value in R)
   dateString: string;
   isMosaic: boolean;
 }

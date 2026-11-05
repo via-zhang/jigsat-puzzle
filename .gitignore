@@ -22,3 +22,6 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Local scratch space (Claude outputs, notes, test files) - never committed
+working/

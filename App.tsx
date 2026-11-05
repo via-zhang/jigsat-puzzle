@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { PuzzleBoard } from './components/PuzzleBoard';
 import { MapPicker } from './components/MapPicker';
 import { CalendarPicker } from './components/CalendarPicker';
+import { IndexLegend } from './components/IndexLegend';
 import { getBoundingBox, generateMosaic, renderLayer, getMonthlyAvailability, findRandomGoodDate } from './services/sentinelService';
 import { PRESET_LOCATIONS, VISUALIZATION_MODES, VisMode } from './constants';
 import { GeoLocation, MosaicData } from './types';
@@ -539,14 +540,7 @@ const App: React.FC = () => {
                     <div className="flex flex-col items-center gap-4 w-full max-w-[500px]">
                         <PuzzleBoard imageUrl={currentImage} gridSize={difficulty} isGameActive={!isGameComplete} mode={puzzleType} rotations={tileRotations} onRotationChange={handleRotationChange} jigsawBoard={jigsawBoard} jigsawTray={jigsawTray} onJigsawDrop={handleJigsawDrop} onJigsawToTray={handleMoveToTray} />
                         {visMode !== 'VISUAL' && (
-                        <div className="w-full bg-white dark:bg-slate-800 p-3 rounded-lg shadow-sm border border-slate-200 dark:border-slate-700">
-                            <div className="flex justify-between text-xs font-semibold text-slate-600 dark:text-slate-300 mb-1">
-                                <span>{VISUALIZATION_MODES[visMode].legendLabels[0]}</span>
-                                <span>{VISUALIZATION_MODES[visMode].label}</span>
-                                <span>{VISUALIZATION_MODES[visMode].legendLabels[1]}</span>
-                            </div>
-                            <div className="h-3 w-full rounded-full" style={{ background: VISUALIZATION_MODES[visMode].legendGradient }}></div>
-                        </div>
+                        <IndexLegend config={VISUALIZATION_MODES[visMode]} />
                         )}
                         <p className="text-xs text-slate-400 text-center">Source: Sentinel-2 Level-2A • {currentTimeRange}</p>
                     </div>

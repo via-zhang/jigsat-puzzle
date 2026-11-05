@@ -1,5 +1,16 @@
-import { MPC_STAC_API, MPC_DATA_API, VisMode } from '../constants';
+import { MPC_STAC_API, MPC_DATA_API, VisMode, VISUALIZATION_MODES, CLOUD_MASK_COLOR, WATER_MASK_COLOR } from '../constants';
 import { SentinelItem, MosaicData } from '../types';
+import {
+  RGB,
+  INDEX_CHANNELS,
+  buildIndexExpression,
+  decodeIndexByte,
+  getBoaOffset,
+  hexToRgb,
+  interpolateColor,
+  isCloudClass,
+  isWaterClass,
+} from './spectralIndices';
 
 /**
  * Calculates a bounding box centered on a lat/lng.
@@ -142,89 +153,101 @@ const getMosaicItems = async (bbox: number[], date: string) => {
     return data.features as SentinelItem[] || [];
 };
 
+/** Output size (pixels) of the square mosaic. Images are requested at this size, so no upscaling. */
+const MOSAIC_SIZE = 768;
+
+const loadImage = (url: string): Promise<HTMLImageElement> =>
+  new Promise((resolve, reject) => {
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.onload = () => resolve(img);
+    img.onerror = () => reject(new Error(`Image failed to load: ${url}`));
+    img.src = url;
+  });
+
+const createCanvas = (size: number) => {
+  const canvas = document.createElement('canvas');
+  canvas.width = size;
+  canvas.height = size;
+  // willReadFrequently keeps pixel reads exact and fast for the index layers.
+  const ctx = canvas.getContext('2d', { willReadFrequently: true })!;
+  return { canvas, ctx };
+};
+
 /**
  * Main Data Fetching Function.
+ *
+ * For every scene captured on `date` we request three images, all cropped to the
+ * same bounding box so they line up exactly:
+ *   1. True colour (TCI asset) as WebP.
+ *   2. NDVI / NDWI / NDBI computed on the server from offset-corrected reflectance,
+ *      packed into the R/G/B channels of a lossless PNG.
+ *   3. The Scene Classification Layer (SCL) for cloud / water masks.
+ * Scenes are drawn from cloudiest to clearest, so the clearest scene ends up on top
+ * and others only fill gaps (transparent no-data areas).
  */
 export const generateMosaic = async (
   bbox: number[],
   date: string,
-  visMode: VisMode 
+  _visMode?: VisMode
 ): Promise<MosaicData> => {
-  
   const items = await getMosaicItems(bbox, date);
   if (items.length === 0) throw new Error("No imagery available for this date.");
 
   // Metadata
   const times = items.map(i => new Date(i.properties.datetime).toISOString().substring(11, 16));
   const uniqueTimes = Array.from(new Set(times)).sort();
-  const timeRange = uniqueTimes.length > 1 
+  const timeRange = uniqueTimes.length > 1
     ? `${date} (${uniqueTimes[0]} - ${uniqueTimes[uniqueTimes.length-1]} UTC)`
     : `${date} ${uniqueTimes[0]} UTC`;
 
   const isMosaic = uniqueTimes.length > 1;
 
-  // Prepare Canvases
-  const size = 1024;
-  
-  const visualCanvas = document.createElement('canvas');
-  visualCanvas.width = size;
-  visualCanvas.height = size;
-  const visualCtx = visualCanvas.getContext('2d')!;
+  const size = MOSAIC_SIZE;
+  const visual = createCanvas(size);
+  const indices = createCanvas(size);
+  const scl = createCanvas(size);
 
-  const bandsCanvas = document.createElement('canvas');
-  bandsCanvas.width = size;
-  bandsCanvas.height = size;
-  const bandsCtx = bandsCanvas.getContext('2d')!;
+  // Fixed precision keeps URLs stable so the browser can cache them.
+  const bboxPath = bbox.map(n => n.toFixed(5)).join(',');
+  const cropUrl = (itemId: string, format: 'png' | 'webp', query: string) =>
+    `${MPC_DATA_API}/item/bbox/${bboxPath}/${size}x${size}.${format}` +
+    `?collection=sentinel-2-l2a&item=${encodeURIComponent(itemId)}&${query}`;
 
-  const swirCanvas = document.createElement('canvas');
-  swirCanvas.width = size;
-  swirCanvas.height = size;
-  const swirCtx = swirCanvas.getContext('2d')!;
+  // Download all scenes in parallel, then draw them in order.
+  const layers = await Promise.all(items.map(async (item) => {
+    const offset = getBoaOffset(item);
+    const indexQuery = [
+      `expression=${encodeURIComponent(buildIndexExpression(offset))}`,
+      'asset_as_band=true',
+      'rescale=-1,1', 'rescale=-1,1', 'rescale=-1,1',
+    ].join('&');
 
-  const loadAndDraw = (ctx: CanvasRenderingContext2D, url: string) => {
-    return new Promise<void>((resolve) => {
-      const img = new Image();
-      img.crossOrigin = "Anonymous";
-      img.onload = () => {
-        ctx.drawImage(img, 0, 0, size, size);
-        resolve();
-      };
-      img.onerror = () => {
-        console.warn("Tile failed to load:", url);
-        resolve();
-      };
-      img.src = url;
-    });
-  };
+    const [vis, idx, cls] = await Promise.allSettled([
+      loadImage(cropUrl(item.id, 'webp', 'assets=visual')),
+      loadImage(cropUrl(item.id, 'png', indexQuery)),
+      loadImage(cropUrl(item.id, 'png', 'assets=SCL')),
+    ]);
+    return { item, vis, idx, cls };
+  }));
 
-  // Fix precision to avoid floating point issues in URL caching
-  const bboxStr = bbox.map(n => n.toFixed(5)).join(",");
-  const baseUrl = `${MPC_DATA_API}/item/preview.png?collection=sentinel-2-l2a&bbox=${bboxStr}`;
-
-  // Cache buster
-  const t = Date.now();
-
-  for (const item of items) {
-     // 1. Visual Asset
-     const visualUrl = `${baseUrl}&item=${item.id}&assets=visual&format=png&width=512&height=512&_t=${t}`;
-     
-     // 2. Data Bands (B04, B03, B08)
-     const bandsUrl = `${baseUrl}&item=${item.id}&assets=B04&assets=B03&assets=B08&rescale=0,5000&format=png&width=512&height=512&_t=${t}`;
-
-     // 3. SWIR Band (B11)
-     const swirUrl = `${baseUrl}&item=${item.id}&assets=B11&rescale=0,5000&format=png&width=512&height=512&_t=${t}`;
-
-     await Promise.all([
-        loadAndDraw(visualCtx, visualUrl),
-        loadAndDraw(bandsCtx, bandsUrl),
-        loadAndDraw(swirCtx, swirUrl)
-     ]);
+  let failed = 0;
+  for (const { item, vis, idx, cls } of layers) {
+    if (vis.status !== 'fulfilled' || idx.status !== 'fulfilled') {
+      failed++;
+      console.warn('Skipping scene that failed to load:', item.id);
+      continue;
+    }
+    visual.ctx.drawImage(vis.value, 0, 0, size, size);
+    indices.ctx.drawImage(idx.value, 0, 0, size, size);
+    if (cls.status === 'fulfilled') scl.ctx.drawImage(cls.value, 0, 0, size, size);
   }
+  if (failed === layers.length) throw new Error("Failed to load satellite imagery.");
 
   // VALIDATION: Check for cut-off (transparent pixels)
-  const visualData = visualCtx.getImageData(0, 0, size, size).data;
+  const visualData = visual.ctx.getImageData(0, 0, size, size).data;
   let transparentPixels = 0;
-  
+
   for (let i = 3; i < visualData.length; i += 4) {
       if (visualData[i] === 0) {
           transparentPixels++;
@@ -232,65 +255,25 @@ export const generateMosaic = async (
   }
 
   const coveragePct = 1.0 - (transparentPixels / (size * size));
-  
+
   if (coveragePct < 0.85) {
       throw new Error(`INSUFFICIENT_COVERAGE`);
   }
 
   return {
-    visualCanvas,
-    bandsCanvas,
-    swirCanvas,
+    visualCanvas: visual.canvas,
+    indexCanvas: indices.canvas,
+    sclCanvas: scl.canvas,
     dateString: timeRange,
     isMosaic
   };
 };
 
-const interpolateColor = (val: number, colors: {pos: number, hex: string}[]) => {
-    // Find bucket
-    for (let i = 0; i < colors.length - 1; i++) {
-        if (val >= colors[i].pos && val <= colors[i+1].pos) {
-            const t = (val - colors[i].pos) / (colors[i+1].pos - colors[i].pos);
-            const c1 = hexToRgb(colors[i].hex);
-            const c2 = hexToRgb(colors[i+1].hex);
-            return [
-                c1[0] + (c2[0] - c1[0]) * t,
-                c1[1] + (c2[1] - c1[1]) * t,
-                c1[2] + (c2[2] - c1[2]) * t
-            ];
-        }
-    }
-    return hexToRgb(colors[colors.length-1].hex);
-};
-
-const hexToRgb = (hex: string) => {
-    const bigint = parseInt(hex.slice(1), 16);
-    return [(bigint >> 16) & 255, (bigint >> 8) & 255, bigint & 255];
-};
-
-const PALETTES = {
-    NDVI: [
-        {pos: -0.2, hex: "#d7191c"},
-        {pos: 0.1, hex: "#fdae61"},
-        {pos: 0.3, hex: "#ffffbf"},
-        {pos: 0.5, hex: "#a6d96a"},
-        {pos: 0.8, hex: "#1a9641"}
-    ],
-    NDWI: [
-        {pos: -0.7, hex: "#f7fbff"},
-        {pos: 0, hex: "#6baed6"},
-        {pos: 0.7, hex: "#08306b"}
-    ],
-    NDBI: [
-        {pos: -0.2, hex: "#9ebcda"},
-        {pos: 0.0, hex: "#8c96c6"},
-        {pos: 0.2, hex: "#8856a7"},
-        {pos: 0.7, hex: "#810f7c"}
-    ]
-};
+const CLOUD_RGB = hexToRgb(CLOUD_MASK_COLOR);
+const WATER_RGB = hexToRgb(WATER_MASK_COLOR);
 
 export const renderLayer = (data: MosaicData, mode: VisMode): string => {
-    const { visualCanvas, bandsCanvas, swirCanvas } = data;
+    const { visualCanvas, indexCanvas, sclCanvas } = data;
     const width = visualCanvas.width;
     const height = visualCanvas.height;
 
@@ -304,45 +287,39 @@ export const renderLayer = (data: MosaicData, mode: VisMode): string => {
         return outCanvas.toDataURL('image/jpeg', 0.9);
     }
 
-    const bandsData = bandsCanvas.getContext('2d')!.getImageData(0, 0, width, height);
-    const swirData = swirCanvas.getContext('2d')!.getImageData(0, 0, width, height);
+    const config = VISUALIZATION_MODES[mode];
+    const channel = INDEX_CHANNELS[mode];
+
+    const indexData = indexCanvas.getContext('2d', { willReadFrequently: true })!.getImageData(0, 0, width, height).data;
+    const sclData = sclCanvas.getContext('2d', { willReadFrequently: true })!.getImageData(0, 0, width, height).data;
     const output = ctx.createImageData(width, height);
+    const out = output.data;
 
-    const bufBands = bandsData.data;
-    const bufSwir = swirData.data;
-    const bufOut = output.data;
+    // Pre-compute the colour for each of the 256 possible index bytes.
+    const lut: (RGB | null)[] = Array.from({ length: 256 }, (_, b) => interpolateColor(decodeIndexByte(b), config.stops));
 
-    for (let i = 0; i < bufBands.length; i += 4) {
-        const B04 = bufBands[i];     
-        const B03 = bufBands[i+1];   
-        const B08 = bufBands[i+2];   
-
-        const B11 = bufSwir[i];     
-
-        let val = 0;
-        let palette = PALETTES.NDVI;
-
-        if (bufBands[i+3] === 0) {
-            bufOut[i] = 0; bufOut[i+1] = 0; bufOut[i+2] = 0; bufOut[i+3] = 0; 
+    for (let i = 0; i < indexData.length; i += 4) {
+        if (indexData[i + 3] === 0) {
+            // No data: leave transparent (shows as black in the JPEG output).
             continue;
         }
 
-        if (mode === 'NDVI') {
-            val = (B08 - B04) / (B08 + B04);
-            palette = PALETTES.NDVI;
-        } else if (mode === 'NDWI') {
-            val = (B03 - B08) / (B03 + B08);
-            palette = PALETTES.NDWI;
-        } else if (mode === 'NDBI') {
-            val = (B11 - B08) / (B11 + B08);
-            palette = PALETTES.NDBI;
+        // SCL is single-band (grey); alpha 0 means no classification available.
+        const sclClass = sclData[i + 3] === 0 ? -1 : sclData[i];
+        let rgb: RGB | null;
+        if (isCloudClass(sclClass)) {
+            rgb = CLOUD_RGB;
+        } else if (config.maskWater && isWaterClass(sclClass)) {
+            rgb = WATER_RGB;
+        } else {
+            rgb = lut[indexData[i + channel]];
         }
+        if (!rgb) continue;
 
-        const [r, g, b] = interpolateColor(val, palette);
-        bufOut[i] = r;
-        bufOut[i+1] = g;
-        bufOut[i+2] = b;
-        bufOut[i+3] = 255; 
+        out[i] = rgb[0];
+        out[i + 1] = rgb[1];
+        out[i + 2] = rgb[2];
+        out[i + 3] = 255;
     }
 
     ctx.putImageData(output, 0, 0);
