@@ -231,7 +231,7 @@ export const PuzzleBoard: React.FC<PuzzleBoardProps> = ({
     const el = containerRef.current;
     if (!el || mode !== PuzzleType.JIGSAW) return;
     const onTouchStart = (e: TouchEvent) => {
-      if ((e.target as Element | null)?.closest?.('[data-piece]')) e.preventDefault();
+      if ((e.target as Element | null)?.closest?.('[data-piece], [data-grab]')) e.preventDefault();
     };
     const onTouchMove = (e: TouchEvent) => {
       if (pressActiveRef.current) e.preventDefault();
@@ -402,6 +402,19 @@ export const PuzzleBoard: React.FC<PuzzleBoardProps> = ({
     cleanupRef.current = cleanup;
   };
 
+  /**
+   * A jigsaw piece's square "body" cell (board slot or tray cell) also grabs the
+   * piece, so pressing inside a notch works. Knobs are handled by the piece's own
+   * outline, which sits above the cells, so a neighbour's knob poking into a notch
+   * still grabs the neighbour.
+   */
+  const grabAreaProps = (tileId: number) => ({
+    'data-grab': tileId,
+    onPointerDown: (e: React.PointerEvent) => handlePointerDown(e, tileId),
+    onClick: (e: React.MouseEvent) => e.stopPropagation(),
+    onContextMenu: (e: React.MouseEvent) => e.preventDefault(),
+  });
+
   const renderTile = (tileId: number, location: 'board' | 'tray') => {
       const isDraggingThis = dragState?.tileId === tileId;
       const isSelected = selectedTile === tileId;
@@ -445,8 +458,9 @@ export const PuzzleBoard: React.FC<PuzzleBoardProps> = ({
                         <div
                             key={slotIndex}
                             data-slot-index={slotIndex}
-                            onClick={() => handleSlotTap(slotIndex)}
-                            className={`relative flex items-center justify-center touch-manipulation ${tileId === null ? `border border-dashed m-0.5 rounded-sm ${hasSelection ? 'bg-amber-100/60 dark:bg-amber-500/10 border-amber-400 cursor-pointer' : 'bg-slate-200/50 dark:bg-slate-800/50 border-slate-400 dark:border-slate-700'}` : ''} ${useShapedTiles ? 'overflow-visible z-0' : 'overflow-hidden'}`}
+                            {...(useShapedTiles && tileId !== null ? grabAreaProps(tileId) : {})}
+                            onClick={tileId === null ? () => handleSlotTap(slotIndex) : undefined}
+                            className={`relative flex items-center justify-center ${useShapedTiles && tileId !== null ? `${GRAB_CLASSES} ${isGameActive ? 'cursor-grab' : ''}` : 'touch-manipulation'} ${tileId === null ? `border border-dashed m-0.5 rounded-sm ${hasSelection ? 'bg-amber-100/60 dark:bg-amber-500/10 border-amber-400 cursor-pointer' : 'bg-slate-200/50 dark:bg-slate-800/50 border-slate-400 dark:border-slate-700'}` : ''} ${useShapedTiles ? 'overflow-visible z-0' : 'overflow-hidden'}`}
                         >
                             {tileId !== null ? renderTile(tileId, 'board') : <div className="text-slate-400 dark:text-slate-600 font-mono text-xs opacity-50 select-none pointer-events-none">{slotIndex + 1}</div>}
                         </div>
@@ -456,7 +470,7 @@ export const PuzzleBoard: React.FC<PuzzleBoardProps> = ({
 
             <div
                 onClick={handleTrayTap}
-                className={`min-h-[140px] w-full bg-slate-100 dark:bg-slate-900/50 rounded-xl border-2 border-slate-200 dark:border-slate-700 p-4 pb-8 transition-all ${jigsawTray.length === 0 ? 'opacity-50' : 'opacity-100'}`}
+                className={`select-none [-webkit-user-select:none] [-webkit-touch-callout:none] min-h-[140px] w-full bg-slate-100 dark:bg-slate-900/50 rounded-xl border-2 border-slate-200 dark:border-slate-700 p-4 pb-8 transition-all ${jigsawTray.length === 0 ? 'opacity-50' : 'opacity-100'}`}
                 data-tray="true"
             >
                 <div className="text-xs font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider mb-6 text-center select-none">
@@ -465,7 +479,7 @@ export const PuzzleBoard: React.FC<PuzzleBoardProps> = ({
                 </div>
                 <div className={`${useShapedTiles ? `grid ${gridSize === 5 ? 'grid-cols-4 sm:grid-cols-5' : 'grid-cols-3 sm:grid-cols-4'} w-full gap-y-14 place-items-center` : 'flex flex-wrap justify-center items-center gap-4'}`}>
                     {jigsawTray.map((tileId) => (
-                        <div key={tileId} className={`relative flex items-center justify-center ${useShapedTiles ? 'w-14 h-14' : 'w-16 h-16 md:w-20 md:h-20 shadow-md bg-slate-300 dark:bg-slate-800 rounded-md overflow-hidden ring-1 ring-slate-900/10'}`}>
+                        <div key={tileId} {...(useShapedTiles ? grabAreaProps(tileId) : {})} className={`relative flex items-center justify-center ${useShapedTiles ? `w-14 h-14 ${GRAB_CLASSES} ${isGameActive ? 'cursor-grab' : ''}` : 'w-16 h-16 md:w-20 md:h-20 shadow-md bg-slate-300 dark:bg-slate-800 rounded-md overflow-hidden ring-1 ring-slate-900/10'}`}>
                             {renderTile(tileId, 'tray')}
                         </div>
                     ))}

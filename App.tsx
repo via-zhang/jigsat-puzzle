@@ -348,6 +348,23 @@ const App: React.FC = () => {
     }
   };
 
+  // Collapsible reference image, available in both Rotate and Jigsaw modes.
+  const referencePanel = currentImage ? (
+    <div className="bg-blue-50 dark:bg-blue-900/20 rounded-lg border border-blue-100 dark:border-blue-900 overflow-hidden">
+        <button onClick={() => setIsHintOpen(!isHintOpen)} className="w-full p-4 flex justify-between items-center text-blue-900 dark:text-blue-200 hover:bg-blue-100/50 dark:hover:bg-blue-900/50 transition-colors">
+          <h3 className="font-semibold flex items-center gap-2"><HelpCircle className="w-4 h-4" /> Reference Image</h3>
+          {isHintOpen ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+        </button>
+        {isHintOpen && (
+          <div className="p-4 pt-0 animate-in slide-in-from-top-2 duration-200">
+            <div className="relative aspect-square w-full rounded-md overflow-hidden border border-slate-300 dark:border-slate-700">
+              <img src={currentImage} alt="Puzzle Hint" className="w-full h-full object-cover" />
+            </div>
+          </div>
+        )}
+    </div>
+  ) : null;
+
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 font-sans transition-colors duration-200">
       <header className="bg-slate-900 dark:bg-black text-white p-4 shadow-md md:sticky md:top-0 z-50">
@@ -425,6 +442,10 @@ const App: React.FC = () => {
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
           <div className="lg:col-span-1 space-y-6">
+            {/* In Choose Location mode the map makes the sidebar tall, so the reference
+                image goes first to stay visible next to the puzzle. */}
+            {mode === GameMode.CHOOSE && referencePanel}
+
             <div className="bg-white dark:bg-slate-900 rounded-xl shadow-sm border border-slate-200 dark:border-slate-800 p-6 transition-colors">
               <h2 className="text-xl font-bold mb-4 flex items-center gap-2 text-slate-900 dark:text-white">
                 <MapPin className="w-5 h-5 text-blue-500" /> Create Puzzle
@@ -493,22 +514,8 @@ const App: React.FC = () => {
                </div>
             )}
 
-            {puzzleType === PuzzleType.JIGSAW && currentImage && (
-              <div className="bg-blue-50 dark:bg-blue-900/20 rounded-lg border border-blue-100 dark:border-blue-900 overflow-hidden">
-                  <button onClick={() => setIsHintOpen(!isHintOpen)} className="w-full p-4 flex justify-between items-center text-blue-900 dark:text-blue-200 hover:bg-blue-100/50 dark:hover:bg-blue-900/50 transition-colors">
-                    <h3 className="font-semibold flex items-center gap-2"><HelpCircle className="w-4 h-4" /> Reference Image</h3>
-                    {isHintOpen ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
-                  </button>
-                  {isHintOpen && (
-                    <div className="p-4 pt-0 animate-in slide-in-from-top-2 duration-200">
-                      <div className="relative aspect-square w-full rounded-md overflow-hidden border border-slate-300 dark:border-slate-700">
-                        <img src={currentImage} alt="Puzzle Hint" className="w-full h-full object-cover" />
-                      </div>
-                    </div>
-                  )}
-              </div>
-            )}
-            
+            {mode === GameMode.RANDOM && referencePanel}
+
             <div className="bg-blue-50 dark:bg-blue-900/20 rounded-lg border border-blue-100 dark:border-blue-900 overflow-hidden">
                 <button onClick={() => setIsInstructionsOpen(!isInstructionsOpen)} className="w-full p-4 flex justify-between items-center text-blue-900 dark:text-blue-200 hover:bg-blue-100/50 dark:hover:bg-blue-900/50 transition-colors">
                   <h3 className="font-semibold flex items-center gap-2"><Info className="w-4 h-4" /> How to Play</h3>
