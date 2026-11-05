@@ -1,0 +1,6 @@
+{
+  "name": "jigSAT Puzzle: Satellite Explorer",
+  "description": "An educational geospatial puzzle game using real satellite imagery from Microsoft Planetary Computer.",
+  "requestFramePermissions": [],
+  "majorCapabilities": []
+}
